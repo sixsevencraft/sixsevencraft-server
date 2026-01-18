@@ -1,12 +1,14 @@
-// server.js — main multiplayer server
+// server.js — Render-compatible WebSocket server
 
 import { WebSocketServer } from "ws";
 import { World } from "./world.js";
 
-const wss = new WebSocketServer({ port: 8080 });
+const PORT = process.env.PORT || 8080;
+const wss = new WebSocketServer({ port: PORT });
+
 const world = new World();
 
-console.log("SixSevenCraft server running on ws://localhost:8080");
+console.log("SixSevenCraft server running on port", PORT);
 
 wss.on("connection", socket => {
     let playerId = null;
@@ -14,9 +16,6 @@ wss.on("connection", socket => {
     socket.on("message", msg => {
         const data = JSON.parse(msg);
 
-        // -----------------------------
-        // PLAYER JOIN
-        // -----------------------------
         if (data.type === "join") {
             playerId = data.id;
             world.players.set(playerId, {
@@ -26,9 +25,6 @@ wss.on("connection", socket => {
             return;
         }
 
-        // -----------------------------
-        // PLAYER MOVEMENT
-        // -----------------------------
         if (data.type === "move") {
             const p = world.players.get(data.id);
             if (!p) return;
@@ -42,9 +38,6 @@ wss.on("connection", socket => {
             return;
         }
 
-        // -----------------------------
-        // CHUNK REQUEST
-        // -----------------------------
         if (data.type === "requestChunk") {
             const chunk = world.ensureChunk(data.cx, data.cz);
 
@@ -58,13 +51,10 @@ wss.on("connection", socket => {
             return;
         }
 
-        // -----------------------------
-        // BLOCK UPDATE
-        // -----------------------------
         if (data.type === "blockUpdate") {
             const { x, y, z, blockId, stateId } = data;
 
-            const { cx, cz } = world.setBlock(x, y, z, blockId, stateId);
+            world.setBlock(x, y, z, blockId, stateId);
 
             broadcast({
                 type: "blockUpdate",
@@ -81,9 +71,6 @@ wss.on("connection", socket => {
     });
 });
 
-// -----------------------------
-// BROADCAST HELPERS
-// -----------------------------
 function broadcast(obj) {
     const msg = JSON.stringify(obj);
     for (const client of wss.clients) {
@@ -98,4 +85,5 @@ function broadcastState() {
     }
     broadcast({ type: "state", players });
 }
+
 
