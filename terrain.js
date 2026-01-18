@@ -1,44 +1,41 @@
-// world.js — server-side world manager
+// terrain.js — server-side chunk generator
 
-import { generateChunk } from "./terrain.js";
+export function generateChunk(cx, cz) {
+    const CHUNK_SIZE = 16;
+    const WORLD_HEIGHT = 128;
 
-export class World {
-    constructor() {
-        this.chunks = new Map();   // "cx,cz" → chunk
-        this.players = new Map();  // id → player data
-    }
+    const blocks = new Uint16Array(CHUNK_SIZE * CHUNK_SIZE * WORLD_HEIGHT);
+    const blockStates = new Uint16Array(CHUNK_SIZE * CHUNK_SIZE * WORLD_HEIGHT);
 
-    key(cx, cz) {
-        return `${cx},${cz}`;
-    }
+    for (let x = 0; x < CHUNK_SIZE; x++) {
+        for (let z = 0; z < CHUNK_SIZE; z++) {
 
-    ensureChunk(cx, cz) {
-        const key = this.key(cx, cz);
-        if (!this.chunks.has(key)) {
-            const chunk = generateChunk(cx, cz);
-            this.chunks.set(key, chunk);
+            const worldX = cx * CHUNK_SIZE + x;
+            const worldZ = cz * CHUNK_SIZE + z;
+
+            const height = 64 + Math.floor(
+                8 * Math.sin(worldX * 0.05) +
+                8 * Math.cos(worldZ * 0.05)
+            );
+
+            for (let y = 0; y < WORLD_HEIGHT; y++) {
+                const index = x + CHUNK_SIZE * (z + CHUNK_SIZE * y);
+
+                if (y > height) {
+                    blocks[index] = 0; // air
+                } else if (y === height) {
+                    blocks[index] = 1; // grass_block
+                } else if (y > height - 4) {
+                    blocks[index] = 2; // dirt
+                } else {
+                    blocks[index] = 3; // stone
+                }
+
+                blockStates[index] = 0; // default state
+            }
         }
-        return this.chunks.get(key);
     }
 
-    getChunk(cx, cz) {
-        return this.chunks.get(this.key(cx, cz));
-    }
-
-    setBlock(x, y, z, blockId, stateId = 0) {
-        const cx = Math.floor(x / 16);
-        const cz = Math.floor(z / 16);
-
-        const chunk = this.ensureChunk(cx, cz);
-
-        const lx = x - cx * 16;
-        const lz = z - cz * 16;
-
-        const index = lx + 16 * (lz + 16 * y);
-
-        chunk.blocks[index] = blockId;
-        chunk.blockStates[index] = stateId;
-
-        return { cx, cz };
-    }
+    return { cx, cz, blocks, blockStates };
 }
+
