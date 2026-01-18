@@ -1,65 +1,101 @@
-import http from "http";
-import WebSocket, { WebSocketServer } from "ws";
+// server.js — main multiplayer server
 
-const PORT = process.env.PORT || 10000;
+import { WebSocketServer } from "ws";
+import { World } from "./world.js";
 
-// Create HTTP server for Render health checks
-const server = http.createServer((req, res) => {
-  if (req.url === "/health") {
-    res.writeHead(200);
-    res.end("OK");
-  } else {
-    res.writeHead(404);
-    res.end();
-  }
+const wss = new WebSocketServer({ port: 8080 });
+const world = new World();
+
+console.log("SixSevenCraft server running on ws://localhost:8080");
+
+wss.on("connection", socket => {
+    let playerId = null;
+
+    socket.on("message", msg => {
+        const data = JSON.parse(msg);
+
+        // -----------------------------
+        // PLAYER JOIN
+        // -----------------------------
+        if (data.type === "join") {
+            playerId = data.id;
+            world.players.set(playerId, {
+                x: 0, y: 80, z: 0,
+                ry: 0
+            });
+            return;
+        }
+
+        // -----------------------------
+        // PLAYER MOVEMENT
+        // -----------------------------
+        if (data.type === "move") {
+            const p = world.players.get(data.id);
+            if (!p) return;
+
+            p.x = data.x;
+            p.y = data.y;
+            p.z = data.z;
+            p.ry = data.ry;
+
+            broadcastState();
+            return;
+        }
+
+        // -----------------------------
+        // CHUNK REQUEST
+        // -----------------------------
+        if (data.type === "requestChunk") {
+            const chunk = world.ensureChunk(data.cx, data.cz);
+
+            socket.send(JSON.stringify({
+                type: "chunk",
+                cx: chunk.cx,
+                cz: chunk.cz,
+                blocks: Array.from(chunk.blocks),
+                blockStates: Array.from(chunk.blockStates)
+            }));
+            return;
+        }
+
+        // -----------------------------
+        // BLOCK UPDATE
+        // -----------------------------
+        if (data.type === "blockUpdate") {
+            const { x, y, z, blockId, stateId } = data;
+
+            const { cx, cz } = world.setBlock(x, y, z, blockId, stateId);
+
+            broadcast({
+                type: "blockUpdate",
+                x, y, z, blockId, stateId
+            });
+        }
+    });
+
+    socket.on("close", () => {
+        if (playerId) {
+            world.players.delete(playerId);
+            broadcast({ type: "leave", id: playerId });
+        }
+    });
 });
 
-// Attach WebSocket server to the same HTTP server
-const wss = new WebSocketServer({ server });
-
-let players = {};
-
-wss.on("connection", ws => {
-  let id = null;
-
-  ws.on("message", msg => {
-    try {
-      const data = JSON.parse(msg);
-
-      if (data.type === "join") {
-        id = data.id;
-        players[id] = { x: 0, y: 0, z: 0, ry: 0 };
-        broadcast({ type: "state", players });
-      }
-
-      if (data.type === "move" && id) {
-        players[id] = {
-          x: data.x,
-          y: data.y,
-          z: data.z,
-          ry: data.ry
-        };
-        broadcast({ type: "state", players });
-      }
-    } catch {}
-  });
-
-  ws.on("close", () => {
-    if (id && players[id]) {
-      delete players[id];
-      broadcast({ type: "leave", id });
-    }
-  });
-});
-
+// -----------------------------
+// BROADCAST HELPERS
+// -----------------------------
 function broadcast(obj) {
-  const msg = JSON.stringify(obj);
-  wss.clients.forEach(c => {
-    if (c.readyState === WebSocket.OPEN) c.send(msg);
-  });
+    const msg = JSON.stringify(obj);
+    for (const client of wss.clients) {
+        if (client.readyState === 1) client.send(msg);
+    }
 }
 
-server.listen(PORT, () => {
-  console.log("Server running on port", PORT);
-});
+function broadcastState() {
+    const players = {};
+    for (const [id, p] of world.players) {
+        players[id] = p;
+    }
+    broadcast({ type: "state", players });
+}
 
