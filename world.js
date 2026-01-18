@@ -26,15 +26,17 @@ export class World {
     }
 
     setBlock(x, y, z, blockId, stateId = 0) {
-        const cx = Math.floor(x / 16);
-        const cz = Math.floor(z / 16);
+        const CHUNK_SIZE = 16;
+
+        const cx = Math.floor(x / CHUNK_SIZE);
+        const cz = Math.floor(z / CHUNK_SIZE);
 
         const chunk = this.ensureChunk(cx, cz);
 
-        const lx = x - cx * 16;
-        const lz = z - cz * 16;
+        const lx = x - cx * CHUNK_SIZE;
+        const lz = z - cz * CHUNK_SIZE;
 
-        const index = lx + 16 * (lz + 16 * y);
+        const index = lx + CHUNK_SIZE * (lz + CHUNK_SIZE * y);
 
         chunk.blocks[index] = blockId;
         chunk.blockStates[index] = stateId;
@@ -42,3 +44,4 @@ export class World {
         return { cx, cz };
     }
 }
+
